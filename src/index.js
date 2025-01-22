@@ -1,24 +1,32 @@
-const express = require('express')
-const path = require('path')
-const http = require('http')
-const socketio = require('socket.io')
-const Filter = require('bad-words')
-const { generateMessage, generateLocationMessage } = require('./Utils/messages.js')
-const { addUser, removeUser, getUser, getUsersInRoom } = require('./Utils/users.js')
-const app = express()
-const server = http.createServer(app)//expicityly created server and paased express to use that in websocket.i9o
-const port = process.env.PORT || 3000
-const publicDirectoryPath = path.join(__dirname, '../public')
-const io = socketio(server)
+const express = require("express");
+const path = require("path");
+const http = require("http");
+const socketio = require("socket.io");
+const Filter = require("bad-words");
+const {
+  generateMessage,
+  generateLocationMessage,
+} = require("./Utils/messages.js");
+const {
+  addUser,
+  removeUser,
+  getUser,
+  getUsersInRoom,
+} = require("./Utils/users.js");
+const app = express();
+const server = http.createServer(app); //expicityly created server and paased express to use that in websocket.i9o
+const port = process.env.PORT || 3000;
+const publicDirectoryPath = path.join(__dirname, "../public");
+const io = socketio(server);
 
-app.get('/health',(req,res)=>{
-    res.send(200).json({
-        message:"all good"
-    })
-})
+app.get("/health", (req, res) => {
+  res.send(200).json({
+    message: "Health Check Looks Good",
+  });
+});
 
 //console.log(publicDirectoryPath)
-app.use(express.static(publicDirectoryPath))
+app.use(express.static(publicDirectoryPath));
 /*
 //Connection will fire when a socket.io gets a new connection
 let count =0
@@ -41,137 +49,102 @@ io.on('connection',(socket)=>{//socket is an obj having info about new connectio
 
 */
 
+io.on("connection", (socket) => {
+  console.log("Connection Established with client");
 
+  socket.on("join", ({ username, room }, callback) => {
+    const { error, user } = addUser({
+      id: socket.id,
+      username,
+      room,
+    });
 
-io.on('connection', (socket) => {
-    console.log("Connection Established with client")
+    if (error) {
+      console.log(error);
+      return callback(error);
+    }
+    //   console.log(user)
 
-    socket.on('join', ({ username, room }, callback) => {
-        const { error, user } = addUser({
-            id: socket.id,
-            username,
-            room
+    socket.join(user.room); //join is predefined  allows us to join a chgat roo
+    // talking about emit specific to room we hjave io.to.emit and socket.broadcast.to.emit
 
-        })
+    let Welcomemessage = `Welcome ${username}`;
+    socket.emit("message", generateMessage(Welcomemessage));
+    socket.broadcast
+      .to(user.room)
+      .emit(
+        "message",
+        generateMessage("System", `${user.username} joined the room`)
+      );
+    io.to(user.room).emit("roomData", {
+      room: user.room,
+      users: getUsersInRoom(user.room),
+    });
 
-        if (error) {
+    callback();
+  });
 
-            console.log(error)
-            return callback(error)
-        }
-     //   console.log(user)
+  socket.on("sendMessage", (userMessage, callback) => {
+    const filter = new Filter();
+    if (filter.isProfane(userMessage)) {
+      return callback("Profanity is not allowed");
+    }
 
+    const { error, user } = getUser(socket.id);
+    if (error) {
+      console.log(error);
+    } else {
+      console.log(user);
 
-        socket.join(user.room)                                               //join is predefined  allows us to join a chgat roo
-        // talking about emit specific to room we hjave io.to.emit and socket.broadcast.to.emit 
+      io.to(user.room).emit(
+        "message",
+        generateMessage(user.username, userMessage)
+      );
+      callback("Mesage Received!");
+    }
+  });
 
-        let Welcomemessage = `Welcome ${username}`
-        socket.emit('message', generateMessage(Welcomemessage))
-        socket.broadcast.to(user.room).emit('message', generateMessage('System',`${user.username} joined the room`))
-        io.to(user.room).emit('roomData',{
-            room:user.room,
-            users:getUsersInRoom(user.room)
-        })
-        
-        callback()
+  socket.on("sendLocation", (geoLocation, callback) => {
+    //  console.log(Object.keys(geoLocation).length)
+    if (Object.keys(geoLocation).length !== 0) {
+      const loc = `Location: ${geoLocation.latitude}, ${geoLocation.longitude}`;
+      //   console.log(geoLocation)
 
-    })
+      const { error, user } = getUser(socket.id);
 
-    socket.on('sendMessage', (userMessage, callback) => {
-        const filter = new Filter()
-        if (filter.isProfane(userMessage)) {
-            return callback("Profanity is not allowed")
-        }
+      if (error) {
+        console.log(error.error);
+      } else {
+        io.to(user.room).emit(
+          "locationMessage",
+          generateLocationMessage(
+            user.username,
+            `https://google.com/maps?query=${geoLocation.latitude},${geoLocation.longitude}`
+          )
+        );
+      }
 
-        const {error,user}=getUser(socket.id)
-        if(error){
-            console.log(error)
-        }
-        else{
-            console.log(user)
+      callback("Location Received by server");
+    } else {
+      callback("No Valid Coordinated received");
+    }
+  });
 
-
-        io.to(user.room).emit('message', generateMessage(user.username,userMessage))
-        callback("Mesage Received!")
-            
-        }
-
-
-
-    })
-
-
-    socket.on('sendLocation', (geoLocation, callback) => {
-
-        //  console.log(Object.keys(geoLocation).length)
-        if (Object.keys(geoLocation).length !== 0) {
-
-            const loc = `Location: ${geoLocation.latitude}, ${geoLocation.longitude}`
-         //   console.log(geoLocation)
-
-         const {error,user}=getUser(socket.id)
-
-         if(error){
-            console.log(error.error)
-
-         }else{
-
-            io.to(user.room).emit('locationMessage', generateLocationMessage(user.username,`https://google.com/maps?query=${geoLocation.latitude},${geoLocation.longitude}`))
-
-            
-         }   
-         
-            callback("Location Received by server")
-        }
-        else {
-            callback("No Valid Coordinated received")
-        }
-
-    })
-
-
-    socket.on("disconnect", () => {
-        const user=removeUser(socket.id)
-        if(user){
-
-            io.to(user.room).emit("message", generateMessage(user.username,`${user.username} has left the room`))
-            io.to(user.room).emit("roomData",{
-                room:user.room,
-                users:getUsersInRoom(user.room)
-            })
-
-
-        }
-
-    })
-
-
-
-})
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  socket.on("disconnect", () => {
+    const user = removeUser(socket.id);
+    if (user) {
+      io.to(user.room).emit(
+        "message",
+        generateMessage(user.username, `${user.username} has left the room`)
+      );
+      io.to(user.room).emit("roomData", {
+        room: user.room,
+        users: getUsersInRoom(user.room),
+      });
+    }
+  });
+});
 
 server.listen(port, () => {
-    console.log("Server Started at port " + port)
-})
-
-
-
-
-
-
-
+  console.log("Server Started at port " + port);
+});
