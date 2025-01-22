@@ -21,7 +21,7 @@ const io = socketio(server);
 
 app.get("/health", (req, res) => {
   res.send(200).json({
-    message: "Health Check Looks Good",
+    message: "Health Check Looks Good -v1",
   });
 });
 
