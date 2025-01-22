@@ -1,6 +1,6 @@
 [
   {
-    "name": "node-app",
+    "name": "node-app-container",
     "imageUri": "597088039179.dkr.ecr.us-east-2.amazonaws.com/nodeapp"
   }
 ]
